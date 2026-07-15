@@ -93,11 +93,13 @@ platform :mac do
     unless ENV["APPLE_ID"] && ENV["AC_PASSWORD"]
       UI.user_error!("APPLE_ID ve AC_PASSWORD ortam değişkenleri gerekli (notarize için). README'ye bakın.")
     end
+    # fastlane notarize action, app-specific password'ü bu env değişkeninden okur.
+    ENV["FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD"] = ENV["AC_PASSWORD"]
     notarize(
       package: dmg_path,
       bundle_id: BUNDLE_ID,
       username: ENV["APPLE_ID"],
-      asc_provider: ENV["APPLE_TEAM_ID"] || "YUD7KSUK5K",
+      asc_provider: ENV["APPLE_TEAM_ID"] || "YUD7KSUK5K", # notarytool için team_id olarak kullanılır
       print_log: true
     )
   end
