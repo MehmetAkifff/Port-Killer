@@ -1,0 +1,111 @@
+# frozen_string_literal: true
+
+# Port Killer — Developer ID (App Store dışı) notarize + GitHub Release otomasyonu.
+#
+# Bu uygulama başka process'leri sonlandırdığı için Mac App Store sandbox'ıyla uyumsuzdur;
+# bu yüzden Developer ID ile imzalanıp notarize edilerek GitHub Releases üzerinden dağıtılır.
+#
+# Gerekli ortam değişkenleri (notarize için):
+#   APPLE_ID        Apple hesabı e-postan (ör. you@example.com)
+#   APPLE_TEAM_ID   10 haneli Team ID (varsayılan: YUD7KSUK5K)
+#   AC_PASSWORD     App-specific password (appleid.apple.com > Oturum Açma ve Güvenlik > Uygulamaya Özel Parolalar)
+#
+# GitHub release için: `gh` CLI kurulu ve `gh auth login` ile oturum açık olmalı.
+
+default_platform(:mac)
+
+platform :mac do
+  PROJECT   = "Port Killer.xcodeproj"
+  SCHEME    = "Port Killer"
+  APP_NAME  = "Port Killer"
+  BUNDLE_ID = "makif.Port-Killer"
+  BUILD_DIR = File.expand_path("../build", __dir__)
+
+  desc "Hızlı debug derlemesi (imzasız da olur)"
+  lane :build_debug do
+    xcodebuild(
+      scheme: SCHEME,
+      project: PROJECT,
+      configuration: "Debug",
+      destination: "generic/platform=macOS",
+      build: true
+    )
+  end
+
+  desc "Developer ID ile imzalı .app üret (notarize etmeden — yerel test için)"
+  lane :build_release do
+    app_path = build_developer_id_app
+    UI.success("İmzalı uygulama: #{app_path}")
+  end
+
+  desc "TAM SÜRÜM: derle → imzala → DMG → notarize → staple. Çıktı: build/Port Killer.dmg"
+  lane :release do
+    app_path = build_developer_id_app
+    dmg_path = make_dmg(app_path)
+    notarize_and_staple(dmg_path)
+    UI.success("Dağıtıma hazır (notarize + staple): #{dmg_path}")
+    dmg_path
+  end
+
+  desc "release lane'ini çalıştırır, sonra DMG'yi GitHub Release olarak yayınlar. Kullanım: fastlane github tag:v1.0"
+  lane :github do |options|
+    version = (get_version_number(xcodeproj: PROJECT, target: SCHEME) rescue "1.0")
+    tag = options[:tag] || "v#{version}"
+    dmg_path = release
+    publish_github_release(tag: tag, version: version, dmg_path: dmg_path)
+  end
+
+  # --- Yardımcılar ---
+
+  # Developer ID ile imzalı .app çıkarır ve yolunu döndürür.
+  private_lane :build_developer_id_app do
+    build_mac_app(
+      scheme: SCHEME,
+      project: PROJECT,
+      configuration: "Release",
+      export_method: "developer-id",
+      output_directory: BUILD_DIR,
+      output_name: APP_NAME,
+      clean: true,
+      export_options: {
+        signingStyle: "automatic",
+        teamID: ENV["APPLE_TEAM_ID"] || "YUD7KSUK5K"
+      }
+    )
+    File.join(BUILD_DIR, "#{APP_NAME}.app")
+  end
+
+  # .app'ten sürükle-bırak arayüzlü basit bir DMG oluşturur (hdiutil, ek bağımlılık yok).
+  def make_dmg(app_path)
+    dmg_path = File.join(BUILD_DIR, "#{APP_NAME}.dmg")
+    staging = File.join(BUILD_DIR, "dmg-staging")
+    sh("rm -rf '#{staging}' '#{dmg_path}'")
+    sh("mkdir -p '#{staging}'")
+    sh("cp -R '#{app_path}' '#{staging}/'")
+    sh("ln -s /Applications '#{staging}/Applications'")
+    sh("hdiutil create -volname '#{APP_NAME}' -srcfolder '#{staging}' -ov -format UDZO '#{dmg_path}'")
+    sh("rm -rf '#{staging}'")
+    dmg_path
+  end
+
+  # DMG'yi notarize eder ve staple'lar.
+  def notarize_and_staple(dmg_path)
+    unless ENV["APPLE_ID"] && ENV["AC_PASSWORD"]
+      UI.user_error!("APPLE_ID ve AC_PASSWORD ortam değişkenleri gerekli (notarize için). README'ye bakın.")
+    end
+    notarize(
+      package: dmg_path,
+      bundle_id: BUNDLE_ID,
+      username: ENV["APPLE_ID"],
+      asc_provider: ENV["APPLE_TEAM_ID"] || "YUD7KSUK5K",
+      print_log: true
+    )
+  end
+
+  # DMG'yi GitHub Release olarak yükler (gh CLI).
+  def publish_github_release(tag:, version:, dmg_path:)
+    notes = "Port Killer #{version} — macOS menü çubuğu port yöneticisi. DMG'yi indirin, uygulamayı Applications'a sürükleyin. Notarize edilmiştir; Gatekeeper uyarısı olmadan açılır."
+    sh("gh release view '#{tag}' >/dev/null 2>&1 && gh release upload '#{tag}' '#{dmg_path}' --clobber || gh release create '#{tag}' '#{dmg_path}' --title 'Port Killer #{version}' --notes '#{notes}'")
+    UI.success("GitHub Release yayınlandı: #{tag}")
+  end
+end

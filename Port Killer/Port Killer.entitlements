@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Developer ID (App Store dışı) dağıtım: App Sandbox kapalı.
+	     Uygulama lsof/kill çalıştırıp başka process'leri sonlandırdığı için sandbox'la uyumsuzdur.
+	     Notarization için Hardened Runtime (ENABLE_HARDENED_RUNTIME=YES) yeterlidir; ek istisna gerekmez. -->
+	<key>com.apple.security.app-sandbox</key>
+	<false/>
+</dict>
+</plist>

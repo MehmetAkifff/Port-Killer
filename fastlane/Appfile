@@ -1,0 +1,7 @@
+# Apple Developer bilgileri. Sırları repoya yazma — ortam değişkenlerinden okunur.
+#   export APPLE_ID="you@example.com"
+#   export APPLE_TEAM_ID="YUD7KSUK5K"
+
+app_identifier("makif.Port-Killer")
+apple_id(ENV["APPLE_ID"]) if ENV["APPLE_ID"]
+team_id(ENV["APPLE_TEAM_ID"] || "YUD7KSUK5K")
